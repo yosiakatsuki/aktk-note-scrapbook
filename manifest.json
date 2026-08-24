@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "note Scrapbook",
+  "version": "0.1.0",
+  "description": "開いている note の記事を Markdown / HTML と画像でローカルに保存します。",
+  "permissions": ["activeTab", "scripting", "downloads"],
+  "host_permissions": ["https://note.com/*", "https://assets.st-note.com/*"],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_title": "note Scrapbook"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["src/content/extract-article.js"],
+      "matches": ["https://note.com/*"]
+    }
+  ]
+}
