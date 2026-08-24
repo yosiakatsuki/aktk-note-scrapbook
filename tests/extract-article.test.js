@@ -234,6 +234,21 @@ describe('添付ファイルの検出', () => {
     expect(embed.isFile).toBeUndefined();
   });
 
+  it('note の添付ファイル配信 URL は拡張子がなくても検出する', () => {
+    const url = 'https://note.com/api/v2/attachments/download/ab9173ab87c0158df9bfc939f876c9fb';
+    const [paragraph] = blocksOf(`<p><a href="${url}">ダウンロード</a></p>`);
+    const [figure] = blocksOf(`<figure><a href="${url}">配布データ</a></figure>`);
+
+    expect(paragraph.inline[0]).toMatchObject({ type: 'link', href: url, isFile: true });
+    expect(figure).toMatchObject({ type: 'embed', url, isFile: true });
+  });
+
+  it('note の別ドメイン・別パスの API は添付ファイル扱いしない', () => {
+    const [block] = blocksOf('<p><a href="https://note.com/api/v2/notes/123">記事 API</a></p>');
+
+    expect(block.inline[0].isFile).toBeUndefined();
+  });
+
   it('大文字の拡張子も判定する', () => {
     const [block] = blocksOf('<p><a href="https://note.com/files/A.ZIP">DL</a></p>');
 

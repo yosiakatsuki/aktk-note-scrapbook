@@ -94,6 +94,10 @@ const DOWNLOADABLE_EXTENSIONS = new Set([
 // note の添付ファイル埋め込みを表す embedded-service の値。
 const FILE_EMBED_SERVICES = /file|attachment|download/i;
 
+// 拡張子が付かない配信 URL。note の添付ファイルはこの形で配られる。
+// 例: https://note.com/api/v2/attachments/download/ab9173ab87c0158df9bfc939f876c9fb
+const ATTACHMENT_URL_PATTERNS = [/^https:\/\/note\.com\/api\/v\d+\/attachments\//i];
+
 const ELEMENT_NODE = 1;
 const TEXT_NODE = 3;
 
@@ -487,9 +491,14 @@ function embedBlock(href, label, ctx, isFile = false) {
 }
 
 /**
- * リンク先がローカルに保存したい添付ファイルかどうかを、URL の拡張子で判定する。
+ * リンク先がローカルに保存したい添付ファイルかどうかを判定する。
+ * 既知の配信 URL か、拡張子が既知のものを対象にする。
  */
 function isDownloadableUrl(url) {
+  if (ATTACHMENT_URL_PATTERNS.some((pattern) => pattern.test(url))) {
+    return true;
+  }
+
   let pathname = url;
 
   try {

@@ -20,6 +20,9 @@ const FILE_FOLDER = 'files';
 // 添付ファイルの完了を待つ上限。これを過ぎたらダウンロード継続中として扱う。
 const DOWNLOAD_TIMEOUT_MS = 30000;
 
+// 保存先を決めるまでの間だけ、添付ファイルの URL と置き場所を覚えておく。
+const pendingAttachments = new Map();
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type !== 'save-article') {
     return false;
@@ -81,13 +84,9 @@ async function saveAttachments(blocks, folder) {
 
   for (const [index, node] of fileNodes.entries()) {
     const url = node.url ?? node.href;
-    const name = uniqueName(attachmentFileName(url, index + 1), usedNames);
 
     try {
-      const state = await downloadAndWait({
-        url,
-        filename: `${folder}/${FILE_FOLDER}/${name}`,
-      });
+      const { name, state } = await downloadAttachment(url, folder, usedNames, index + 1);
 
       node.path = `${FILE_FOLDER}/${name}`;
 
@@ -102,6 +101,64 @@ async function saveAttachments(blocks, folder) {
   }
 
   return { saved, pending, failed };
+}
+
+/**
+ * 添付ファイル 1 件をダウンロードし、実際に保存されたファイル名を返す。
+ *
+ * download() に filename を渡さないのがポイント。渡すとそれが優先され、
+ * サーバーが Content-Disposition で返す本来のファイル名が失われる。
+ * note の配信 URL は拡張子を含まないため、本来の名前が分からないと
+ * 拡張子なしのファイルになってしまう。
+ * 代わりに onDeterminingFilename で、本来の名前のまま保存先だけを差し替える。
+ */
+async function downloadAttachment(url, folder, usedNames, index) {
+  pendingAttachments.set(url, {
+    folder,
+    usedNames,
+    fallbackName: attachmentFileName(url, index),
+  });
+
+  try {
+    const downloadId = await chrome.downloads.download({ url, saveAs: false });
+    const state = await waitForDownload(downloadId);
+    const [item] = await chrome.downloads.search({ id: downloadId });
+    const name = baseName(item?.filename ?? '');
+
+    if (!name) {
+      throw new Error('保存されたファイル名を確認できませんでした');
+    }
+
+    return { name, state };
+  } finally {
+    pendingAttachments.delete(url);
+  }
+}
+
+/**
+ * 保存先を決める直前に呼ばれ、サーバー由来のファイル名はそのままに、
+ * 置き場所だけを記事の files/ に差し替える。
+ */
+chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
+  const attachment = pendingAttachments.get(item.url) ?? pendingAttachments.get(item.finalUrl);
+
+  if (!attachment) {
+    return;
+  }
+
+  const suggested = sanitizeSegment(baseName(item.filename), {
+    fallback: attachment.fallbackName,
+  });
+  const name = uniqueName(suggested, attachment.usedNames);
+
+  suggest({
+    filename: `${attachment.folder}/${FILE_FOLDER}/${name}`,
+    conflictAction: 'overwrite',
+  });
+});
+
+function baseName(path) {
+  return String(path ?? '').split(/[\\/]/).pop() ?? '';
 }
 
 /**
@@ -131,16 +188,14 @@ function uniqueName(name, usedNames) {
 }
 
 /**
- * ダウンロードを始めて、完了するまで待つ。
+ * ダウンロードの完了を待つ。
  *
  * 大きなファイルを待ち続けても保存処理が終わらないので、一定時間で切り上げる。
  * その場合もダウンロード自体はブラウザ側で続くため、参照は差し替えてよい。
  *
  * @return {Promise<'complete'|'pending'>} 待ち切れたかどうか。
  */
-async function downloadAndWait({ url, filename }) {
-  const downloadId = await download({ url, filename });
-
+function waitForDownload(downloadId) {
   return new Promise((resolve, reject) => {
     let timer;
 

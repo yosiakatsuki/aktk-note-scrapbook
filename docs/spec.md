@@ -55,10 +55,13 @@ MV3 の service worker では `URL.createObjectURL()` が使えません。取�
 対象の判定は、note の DOM が読めない場合にも当たるよう多段にしています。
 
 - `download` 属性の付いたリンク
+- 既知の配信 URL（`ATTACHMENT_URL_PATTERNS`）。note の添付ファイルは `https://note.com/api/v2/attachments/download/<ハッシュ>` の形で、拡張子を含まない
 - URL の拡張子が既知のもの（`DOWNLOADABLE_EXTENSIONS`）
 - `figure` の `embedded-service` が file / attachment / download を含むもの
 
-保存名は連番ではなく URL の末尾を使います。画像と違い、名前そのものに意味があるためです。同じフォルダで名前がぶつかる場合だけ連番を足します。
+保存名はサーバーが `Content-Disposition` で返す本来の名前を使います。そのため `chrome.downloads.download` に `filename` を渡しません。渡すとそちらが優先され、本来の名前が失われます。note の配信 URL は拡張子を含まないので、URL から名前を作ると拡張子なしのファイルになってしまいます。
+
+代わりに `chrome.downloads.onDeterminingFilename` で、名前はブラウザの判断のまま、置き場所だけを記事の `files/` に差し替えます。URL から名前が取れる場合のフォールバックも残しています。同じフォルダで名前がぶつかる場合だけ連番を足します。
 
 ダウンロードの完了は `chrome.downloads.onChanged` で待ちますが、大きなファイルで保存処理が終わらなくなるのを避けるため 30 秒で切り上げます。切り上げてもダウンロードはブラウザ側で続き、指定した場所に保存されるので、参照の差し替えはそのまま残し、結果に「継続中」として件数を出します。
 
