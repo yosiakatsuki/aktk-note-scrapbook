@@ -5,44 +5,54 @@
  * 外部リソース（フォント・スクリプト）は一切参照しない。
  */
 
+// 保存した記事は原稿と同じ見た目で読みたいので、OS のダークモードには追従せず
+// 背景は白で固定する。色はすべて具体値で指定し、閲覧環境で変わらないようにする。
 const STYLE = `
-:root { color-scheme: light dark; }
+:root { color-scheme: light; }
 body {
   margin: 0 auto;
   padding: 2rem 1.25rem 6rem;
   max-width: 42rem;
+  background: #ffffff;
+  color: #222222;
   line-height: 1.9;
   font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif;
   word-wrap: break-word;
 }
-header { border-bottom: 1px solid rgba(127, 127, 127, 0.4); padding-bottom: 1rem; margin-bottom: 2rem; }
+header { border-bottom: 1px solid #dddddd; padding-bottom: 1rem; margin-bottom: 2rem; }
 h1 { font-size: 1.7rem; line-height: 1.5; margin: 0 0 0.75rem; }
 h2 { font-size: 1.35rem; margin: 2.5rem 0 0.75rem; }
 h3 { font-size: 1.15rem; margin: 2rem 0 0.5rem; }
-.meta { font-size: 0.85rem; opacity: 0.75; margin: 0; }
+a { color: #1a6dcc; }
+.meta { font-size: 0.85rem; color: #666666; margin: 0; }
 .meta a { word-break: break-all; }
 p { margin: 1rem 0; }
 img { max-width: 100%; height: auto; display: block; }
 figure { margin: 1.5rem 0; }
-figcaption { font-size: 0.85rem; opacity: 0.75; margin-top: 0.4rem; }
+figcaption { font-size: 0.85rem; color: #666666; margin-top: 0.4rem; }
 blockquote {
   margin: 1.5rem 0;
   padding: 0.25rem 0 0.25rem 1rem;
-  border-left: 3px solid rgba(127, 127, 127, 0.5);
-  opacity: 0.9;
+  border-left: 3px solid #dddddd;
+  color: #555555;
 }
 pre {
+  margin: 1.5rem 0;
   padding: 0.9rem;
-  overflow-x: auto;
-  background: rgba(127, 127, 127, 0.12);
+  background: #f2f2f2;
+  border: 1px solid #e2e2e2;
   border-radius: 4px;
   line-height: 1.6;
+  /* 横スクロールせずに全文が読めるよう折り返す。 */
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9em; }
-:not(pre) > code { background: rgba(127, 127, 127, 0.16); padding: 0.1em 0.3em; border-radius: 3px; }
-hr { border: none; border-top: 1px solid rgba(127, 127, 127, 0.4); margin: 2.5rem 0; }
+:not(pre) > code { background: #f2f2f2; padding: 0.1em 0.3em; border-radius: 3px; }
+hr { border: none; border-top: 1px solid #dddddd; margin: 2.5rem 0; }
 table { border-collapse: collapse; width: 100%; display: block; overflow-x: auto; }
-th, td { border: 1px solid rgba(127, 127, 127, 0.4); padding: 0.4rem 0.6rem; text-align: left; }
+th, td { border: 1px solid #dddddd; padding: 0.4rem 0.6rem; text-align: left; }
 .embed { margin: 1.5rem 0; }
 `.trim();
 

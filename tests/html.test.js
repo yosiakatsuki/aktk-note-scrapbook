@@ -18,6 +18,24 @@ describe('renderHtml', () => {
     expect(html).not.toMatch(/<link[^>]+href=/i);
   });
 
+  it('背景は白で固定し、OS のダークモードに追従しない', () => {
+    const html = render([]);
+
+    expect(html).toContain('color-scheme: light;');
+    expect(html).toContain('background: #ffffff;');
+    expect(html).not.toContain('color-scheme: light dark');
+    expect(html).not.toContain('prefers-color-scheme');
+  });
+
+  it('コードブロックはグレー背景で、横スクロールせずに折り返す', () => {
+    const html = render([{ type: 'code', lang: '', text: 'const a = 1;' }]);
+    const preStyle = html.slice(html.indexOf('pre {'), html.indexOf('}', html.indexOf('pre {')));
+
+    expect(preStyle).toContain('background: #f2f2f2;');
+    expect(preStyle).toContain('white-space: pre-wrap;');
+    expect(preStyle).not.toContain('overflow-x');
+  });
+
   it('タイトルとメタ情報をヘッダーに出す', () => {
     const html = render([], {
       author: '著者',
