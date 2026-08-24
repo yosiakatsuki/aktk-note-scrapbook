@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { imageFileName, sanitizeSegment } from '../src/lib/filename.js';
+import { attachmentFileName, imageFileName, sanitizeSegment } from '../src/lib/filename.js';
 
 describe('sanitizeSegment', () => {
   it('日本語とスペースはそのまま残す', () => {
@@ -51,5 +51,28 @@ describe('imageFileName', () => {
     expect(imageFileName(3, { url: 'https://example.com/image', contentType: 'text/html' })).toBe(
       '003.img'
     );
+  });
+});
+
+describe('attachmentFileName', () => {
+  it('URL の末尾をファイル名に使う', () => {
+    expect(attachmentFileName('https://note.com/files/sample.zip')).toBe('sample.zip');
+  });
+
+  it('パーセントエンコードされた日本語名を戻す', () => {
+    expect(attachmentFileName('https://note.com/files/%E8%B3%87%E6%96%99.zip')).toBe('資料.zip');
+  });
+
+  it('クエリはファイル名に含めない', () => {
+    expect(attachmentFileName('https://note.com/files/a.zip?token=xyz')).toBe('a.zip');
+  });
+
+  it('使えない文字を落とす', () => {
+    expect(attachmentFileName('https://note.com/files/a%2Fb%3Ac.zip')).toBe('a b c.zip');
+  });
+
+  it('名前が取れなければ連番にする', () => {
+    expect(attachmentFileName('https://note.com/files/', 3)).toBe('file-003');
+    expect(attachmentFileName('not a url', 1)).toBe('file-001');
   });
 });

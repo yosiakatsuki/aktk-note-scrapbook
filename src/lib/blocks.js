@@ -34,3 +34,74 @@ export function collectImageBlocks(blocks = []) {
 
   return images;
 }
+
+/**
+ * 添付ファイルを指すノードを、本文の登場順に集める。
+ *
+ * 対象は `isFile` の印が付いた embed ブロックと link インラインの両方。
+ * 画像と同じく元オブジェクトの参照を返すので、呼び出し側で `path` を書き込むと
+ * そのまま Markdown / HTML の出力に反映される。
+ *
+ * @param {Array<object>} blocks ブロック配列。
+ * @return {Array<object>} 添付ファイルノードの配列。
+ */
+export function collectFileNodes(blocks = []) {
+  const files = [];
+
+  for (const block of blocks) {
+    switch (block.type) {
+      case 'embed':
+        if (block.isFile) {
+          files.push(block);
+        }
+
+        break;
+
+      case 'heading':
+      case 'paragraph':
+        files.push(...fileNodesInInline(block.inline ?? []));
+        break;
+
+      case 'quote':
+        files.push(...collectFileNodes(block.blocks ?? []));
+        break;
+
+      case 'list':
+        for (const itemBlocks of block.items ?? []) {
+          files.push(...collectFileNodes(itemBlocks));
+        }
+
+        break;
+
+      case 'table':
+        for (const row of block.rows ?? []) {
+          for (const cell of row) {
+            files.push(...fileNodesInInline(cell));
+          }
+        }
+
+        break;
+
+      default:
+        break;
+    }
+  }
+
+  return files;
+}
+
+function fileNodesInInline(nodes) {
+  const files = [];
+
+  for (const node of nodes) {
+    if (node.type === 'link' && node.isFile) {
+      files.push(node);
+    }
+
+    if (node.children) {
+      files.push(...fileNodesInInline(node.children));
+    }
+  }
+
+  return files;
+}

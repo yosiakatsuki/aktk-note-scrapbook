@@ -133,6 +133,41 @@ describe('renderMarkdown', () => {
     );
   });
 
+  it('保存済みの添付ファイルはローカルパスを参照する', () => {
+    const markdown = render([
+      {
+        type: 'embed',
+        url: 'https://note.com/files/a.zip',
+        label: '配布データ',
+        isFile: true,
+        path: 'files/a.zip',
+      },
+      {
+        type: 'paragraph',
+        inline: [
+          {
+            type: 'link',
+            href: 'https://note.com/files/b.pdf',
+            children: [text('資料')],
+            isFile: true,
+            path: 'files/b.pdf',
+          },
+        ],
+      },
+    ]);
+
+    expect(markdown).toContain('[配布データ](files/a.zip)');
+    expect(markdown).toContain('[資料](files/b.pdf)');
+  });
+
+  it('取得できなかった添付ファイルは元の URL を残す', () => {
+    const markdown = render([
+      { type: 'embed', url: 'https://note.com/files/a.zip', label: 'a.zip', isFile: true },
+    ]);
+
+    expect(markdown).toContain('[a.zip](https://note.com/files/a.zip)');
+  });
+
   it('埋め込みはリンクとして残す', () => {
     const markdown = render([
       { type: 'embed', url: 'https://youtu.be/abc', label: '動画タイトル' },

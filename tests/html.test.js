@@ -98,6 +98,41 @@ describe('renderHtml', () => {
     expect(html).toContain('<tbody><tr><td>1</td><td>2</td></tr></tbody>');
   });
 
+  it('保存済みの添付ファイルはローカルパスを参照する', () => {
+    const html = render([
+      {
+        type: 'embed',
+        url: 'https://note.com/files/a.zip',
+        label: '配布データ',
+        isFile: true,
+        path: 'files/a.zip',
+      },
+      {
+        type: 'paragraph',
+        inline: [
+          {
+            type: 'link',
+            href: 'https://note.com/files/b.pdf',
+            children: [text('資料')],
+            isFile: true,
+            path: 'files/b.pdf',
+          },
+        ],
+      },
+    ]);
+
+    expect(html).toContain('<a href="files/a.zip">配布データ</a>');
+    expect(html).toContain('<a href="files/b.pdf">資料</a>');
+  });
+
+  it('取得できなかった添付ファイルは元の URL を残す', () => {
+    const html = render([
+      { type: 'embed', url: 'https://note.com/files/a.zip', label: 'a.zip', isFile: true },
+    ]);
+
+    expect(html).toContain('<a href="https://note.com/files/a.zip">a.zip</a>');
+  });
+
   it('HTML 特殊文字と属性値をエスケープする', () => {
     const html = render([
       { type: 'paragraph', inline: [text('<script>alert("x")</script> & more')] },

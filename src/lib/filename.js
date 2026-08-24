@@ -96,3 +96,27 @@ function extensionFromUrl(url) {
 
   return KNOWN_EXTENSIONS.has(extension) ? extension : '';
 }
+
+/**
+ * 添付ファイルの保存ファイル名を作る。
+ *
+ * 画像と違い名前そのものに意味があるので、連番ではなく URL の末尾を使う。
+ *
+ * @param {string} url   添付ファイルの URL。
+ * @param {number} index 1 始まりの通し番号。名前が取れなかったときに使う。
+ * @return {string} ファイル名。
+ */
+export function attachmentFileName(url, index = 1) {
+  let lastSegment = '';
+
+  try {
+    lastSegment = decodeURIComponent(new URL(url).pathname.split('/').pop() ?? '');
+  } catch {
+    // 解決できない URL は連番にフォールバックする。
+  }
+
+  return sanitizeSegment(lastSegment, {
+    maxLength: 80,
+    fallback: `file-${String(index).padStart(3, '0')}`,
+  });
+}

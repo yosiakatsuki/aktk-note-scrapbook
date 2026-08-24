@@ -189,3 +189,54 @@ describe('extractBlocks', () => {
     expect(root.querySelector('script')).not.toBeNull();
   });
 });
+
+describe('添付ファイルの検出', () => {
+  it('拡張子が既知のファイルの figure は isFile を立てる', () => {
+    expect(
+      blocksOf('<figure><a href="https://note.com/files/sample.zip">配布データ</a></figure>')
+    ).toEqual([
+      {
+        type: 'embed',
+        url: 'https://note.com/files/sample.zip',
+        label: '配布データ',
+        isFile: true,
+      },
+    ]);
+  });
+
+  it('拡張子がなくても embedded-service が file なら isFile を立てる', () => {
+    const [block] = blocksOf(
+      '<figure embedded-service="file"><a href="https://note.com/api/v1/attachments/123/download">配布データ</a></figure>'
+    );
+
+    expect(block.isFile).toBe(true);
+  });
+
+  it('download 属性が付いたリンクも添付ファイルとみなす', () => {
+    const [block] = blocksOf('<p><a href="https://note.com/dl/xyz" download>ダウンロード</a></p>');
+
+    expect(block.inline[0].isFile).toBe(true);
+  });
+
+  it('本文中のリンクでも拡張子で判定する', () => {
+    const [block] = blocksOf('<p>資料は<a href="https://note.com/files/a.pdf">こちら</a></p>');
+
+    expect(block.inline[1]).toMatchObject({ type: 'link', isFile: true });
+  });
+
+  it('画像や普通のリンクには isFile を付けない', () => {
+    const [paragraph] = blocksOf('<p><a href="https://example.com/page">記事</a></p>');
+    const [embed] = blocksOf(
+      '<figure embedded-service="youtube"><iframe src="https://youtube.com/embed/x"></iframe></figure>'
+    );
+
+    expect(paragraph.inline[0].isFile).toBeUndefined();
+    expect(embed.isFile).toBeUndefined();
+  });
+
+  it('大文字の拡張子も判定する', () => {
+    const [block] = blocksOf('<p><a href="https://note.com/files/A.ZIP">DL</a></p>');
+
+    expect(block.inline[0].isFile).toBe(true);
+  });
+});

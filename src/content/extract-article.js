@@ -62,6 +62,38 @@ const BLOCK_TAGS = new Set([
   'details',
 ]);
 
+// 本文からローカルに持ち出したい添付ファイルの拡張子。
+// 画像は別扱いなので含めない。HTML など開くと危ないものも含めない。
+const DOWNLOADABLE_EXTENSIONS = new Set([
+  'zip',
+  '7z',
+  'rar',
+  'tar',
+  'gz',
+  'pdf',
+  'epub',
+  'txt',
+  'csv',
+  'md',
+  'doc',
+  'docx',
+  'xls',
+  'xlsx',
+  'ppt',
+  'pptx',
+  'psd',
+  'ai',
+  'sketch',
+  'mp3',
+  'wav',
+  'm4a',
+  'mp4',
+  'mov',
+]);
+
+// note の添付ファイル埋め込みを表す embedded-service の値。
+const FILE_EMBED_SERVICES = /file|attachment|download/i;
+
 const ELEMENT_NODE = 1;
 const TEXT_NODE = 3;
 
@@ -362,12 +394,16 @@ function figureBlocks(figure, ctx) {
     }
   }
 
-  // 画像がない figure は埋め込み（X / YouTube / リンクカードなど）とみなす。
+  // 画像がない figure は埋め込み（X / YouTube / リンクカード・添付ファイルなど）とみなす。
   const iframeSrc = figure.querySelector('iframe')?.getAttribute('src');
   const anchor = figure.querySelector('a[href]');
   const href = iframeSrc || anchor?.getAttribute('href');
   const label = caption || anchor?.textContent?.trim() || '';
-  const embed = embedBlock(href, label, ctx);
+  // 拡張子が付かない配信 URL もあるので、note の埋め込み種別と download 属性も見る。
+  const isFile =
+    FILE_EMBED_SERVICES.test(figure.getAttribute('embedded-service') ?? '') ||
+    anchor?.hasAttribute('download') === true;
+  const embed = embedBlock(href, label, ctx, isFile);
 
   if (embed) {
     return [embed];
@@ -437,10 +473,35 @@ function largestFromSrcset(srcset) {
   return best;
 }
 
-function embedBlock(href, label, ctx) {
+function embedBlock(href, label, ctx, isFile = false) {
   const url = resolveUrl(href, ctx);
 
-  return url ? { type: 'embed', url, label: label || url } : null;
+  if (!url) {
+    return null;
+  }
+
+  const block = { type: 'embed', url, label: label || url };
+
+  // 添付ファイルは後段でローカルに保存し、参照を差し替える。
+  return isFile || isDownloadableUrl(url) ? { ...block, isFile: true } : block;
+}
+
+/**
+ * リンク先がローカルに保存したい添付ファイルかどうかを、URL の拡張子で判定する。
+ */
+function isDownloadableUrl(url) {
+  let pathname = url;
+
+  try {
+    pathname = new URL(url).pathname;
+  } catch {
+    // 解決できない URL は添付ファイル扱いしない。
+    return false;
+  }
+
+  const matched = pathname.toLowerCase().match(/\.([a-z0-9]+)$/);
+
+  return matched ? DOWNLOADABLE_EXTENSIONS.has(matched[1]) : false;
 }
 
 function listBlocks(list, ctx, ordered) {
@@ -554,7 +615,13 @@ function inlineFromNode(node, ctx) {
         return [];
       }
 
-      return href ? [{ type: 'link', href, children }] : children;
+      if (!href) {
+        return children;
+      }
+
+      const isFile = node.hasAttribute('download') || isDownloadableUrl(href);
+
+      return [isFile ? { type: 'link', href, children, isFile: true } : { type: 'link', href, children }];
     }
 
     default:

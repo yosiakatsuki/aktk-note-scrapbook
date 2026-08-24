@@ -160,7 +160,7 @@ function renderBlock(block, depth) {
     }
 
     case 'embed':
-      return `<p class="embed"><a href="${escapeAttribute(block.url)}">${escapeHtml(block.label || block.url)}</a></p>`;
+      return `<p class="embed"><a href="${escapeAttribute(block.path || block.url)}">${escapeHtml(block.label || block.url)}</a></p>`;
 
     case 'code':
       return `<pre><code>${escapeHtml(stripTrailingNewline(block.text))}</code></pre>`;
@@ -245,7 +245,7 @@ function renderInlineNode(node) {
       return `<code>${escapeHtml(node.text)}</code>`;
 
     case 'link':
-      return `<a href="${escapeAttribute(node.href)}">${renderInline(node.children)}</a>`;
+      return `<a href="${escapeAttribute(node.path || node.href)}">${renderInline(node.children)}</a>`;
 
     default:
       return '';

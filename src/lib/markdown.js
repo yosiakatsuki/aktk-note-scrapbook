@@ -60,7 +60,7 @@ function renderBlock(block) {
     }
 
     case 'embed':
-      return [`[${escapeText(block.label || block.url)}](${encodeTarget(block.url)})`];
+      return [`[${escapeText(block.label || block.url)}](${encodeTarget(block.path || block.url)})`];
 
     case 'code':
       return [`\`\`\`${block.lang ?? ''}\n${stripTrailingNewline(block.text)}\n\`\`\``];
@@ -151,7 +151,7 @@ function renderInlineNode(node) {
       return `\`${node.text.replace(/`/g, '')}\``;
 
     case 'link':
-      return `[${renderInline(node.children)}](${encodeTarget(node.href)})`;
+      return `[${renderInline(node.children)}](${encodeTarget(node.path || node.href)})`;
 
     default:
       return '';

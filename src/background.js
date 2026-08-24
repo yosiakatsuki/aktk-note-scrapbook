@@ -6,15 +6,19 @@
  * 3. index.html と article.md を書き出す
  */
 
-import { collectImageBlocks } from './lib/blocks.js';
+import { collectFileNodes, collectImageBlocks } from './lib/blocks.js';
 import { bytesToDataUrl, textToDataUrl } from './lib/data-url.js';
-import { imageFileName, sanitizeSegment } from './lib/filename.js';
+import { attachmentFileName, imageFileName, sanitizeSegment } from './lib/filename.js';
 import { renderHtml } from './lib/html.js';
 import { renderMarkdown } from './lib/markdown.js';
 
 // ダウンロードフォルダ直下に作るまとめ用フォルダ。
 const ROOT_FOLDER = 'note-scrapbook';
 const IMAGE_FOLDER = 'images';
+const FILE_FOLDER = 'files';
+
+// 添付ファイルの完了を待つ上限。これを過ぎたらダウンロード継続中として扱う。
+const DOWNLOAD_TIMEOUT_MS = 30000;
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type !== 'save-article') {
@@ -42,6 +46,7 @@ async function saveArticle(tabId) {
 
   const folder = `${ROOT_FOLDER}/${sanitizeSegment(article.title)}`;
   const imageResult = await saveImages(article.blocks, folder);
+  const fileResult = await saveAttachments(article.blocks, folder);
 
   await downloadText(`${folder}/index.html`, 'text/html', renderHtml(article));
   await downloadText(`${folder}/article.md`, 'text/markdown', renderMarkdown(article));
@@ -52,7 +57,123 @@ async function saveArticle(tabId) {
     title: article.title,
     savedImages: imageResult.saved,
     failedImages: imageResult.failed,
+    savedFiles: fileResult.saved,
+    pendingFiles: fileResult.pending,
+    failedFiles: fileResult.failed,
   };
+}
+
+/**
+ * 本文中の添付ファイル（zip など）を files/ に保存し、参照をローカルパスに差し替える。
+ *
+ * 画像と違い、URL をそのまま chrome.downloads.download に渡す。
+ * ダウンロード API はブラウザ自身のネットワークスタックで取得するため、
+ * ログイン中のクッキーが付き、会員向けのファイルもリンクをクリックしたときと
+ * 同じように取得できる。拡張から fetch すると拡張のオリジンからの送信になり、
+ * クッキーが付かないので同じことはできない。
+ */
+async function saveAttachments(blocks, folder) {
+  const fileNodes = collectFileNodes(blocks);
+  const usedNames = new Set();
+  const failed = [];
+  let saved = 0;
+  let pending = 0;
+
+  for (const [index, node] of fileNodes.entries()) {
+    const url = node.url ?? node.href;
+    const name = uniqueName(attachmentFileName(url, index + 1), usedNames);
+
+    try {
+      const state = await downloadAndWait({
+        url,
+        filename: `${folder}/${FILE_FOLDER}/${name}`,
+      });
+
+      node.path = `${FILE_FOLDER}/${name}`;
+
+      if (state === 'pending') {
+        pending += 1;
+      } else {
+        saved += 1;
+      }
+    } catch (error) {
+      failed.push({ url, reason: error?.message ?? String(error) });
+    }
+  }
+
+  return { saved, pending, failed };
+}
+
+/**
+ * 同じフォルダ内でファイル名がぶつからないよう、必要なら連番を足す。
+ */
+function uniqueName(name, usedNames) {
+  if (!usedNames.has(name)) {
+    usedNames.add(name);
+
+    return name;
+  }
+
+  const dotIndex = name.lastIndexOf('.');
+  const base = dotIndex > 0 ? name.slice(0, dotIndex) : name;
+  const extension = dotIndex > 0 ? name.slice(dotIndex) : '';
+
+  let counter = 2;
+
+  while (usedNames.has(`${base}-${counter}${extension}`)) {
+    counter += 1;
+  }
+
+  const candidate = `${base}-${counter}${extension}`;
+  usedNames.add(candidate);
+
+  return candidate;
+}
+
+/**
+ * ダウンロードを始めて、完了するまで待つ。
+ *
+ * 大きなファイルを待ち続けても保存処理が終わらないので、一定時間で切り上げる。
+ * その場合もダウンロード自体はブラウザ側で続くため、参照は差し替えてよい。
+ *
+ * @return {Promise<'complete'|'pending'>} 待ち切れたかどうか。
+ */
+async function downloadAndWait({ url, filename }) {
+  const downloadId = await download({ url, filename });
+
+  return new Promise((resolve, reject) => {
+    let timer;
+
+    const settle = (callback, value) => {
+      chrome.downloads.onChanged.removeListener(onChanged);
+      clearTimeout(timer);
+      callback(value);
+    };
+
+    const handleState = (state, error) => {
+      if (state === 'complete') {
+        settle(resolve, 'complete');
+      } else if (state === 'interrupted') {
+        settle(reject, new Error(error ?? 'ダウンロードが中断されました'));
+      }
+    };
+
+    function onChanged(delta) {
+      if (delta.id === downloadId && delta.state) {
+        handleState(delta.state.current, delta.error?.current);
+      }
+    }
+
+    chrome.downloads.onChanged.addListener(onChanged);
+    timer = setTimeout(() => settle(resolve, 'pending'), DOWNLOAD_TIMEOUT_MS);
+
+    // リスナーを付ける前に終わっている場合があるので、現在の状態も確かめる。
+    chrome.downloads.search({ id: downloadId }).then(([item]) => {
+      if (item) {
+        handleState(item.state, item.error);
+      }
+    });
+  });
 }
 
 /**

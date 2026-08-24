@@ -46,6 +46,22 @@ content script なら Web ページのコンテキストで呼べますが、得
 
 MV3 の service worker では `URL.createObjectURL()` が使えません。取得した画像と生成したテキストは data: URL に変換して `chrome.downloads.download` に渡します。
 
+### 添付ファイルは URL をそのまま chrome.downloads に渡す
+
+本文に zip などの添付ファイルリンクがあれば `files/` に保存し、本文の参照をローカルパスへ差し替えます。
+
+会員向けページの配布ファイルでも取得できます。`chrome.downloads.download` はブラウザ自身のネットワークスタックで取得するため、ログイン中のクッキーが付き、ユーザーがリンクをクリックしたときと同じ扱いになるからです。拡張から `fetch` すると拡張のオリジンからの送信になりクッキーが付かないので、画像と同じ方法は使えません。
+
+対象の判定は、note の DOM が読めない場合にも当たるよう多段にしています。
+
+- `download` 属性の付いたリンク
+- URL の拡張子が既知のもの（`DOWNLOADABLE_EXTENSIONS`）
+- `figure` の `embedded-service` が file / attachment / download を含むもの
+
+保存名は連番ではなく URL の末尾を使います。画像と違い、名前そのものに意味があるためです。同じフォルダで名前がぶつかる場合だけ連番を足します。
+
+ダウンロードの完了は `chrome.downloads.onChanged` で待ちますが、大きなファイルで保存処理が終わらなくなるのを避けるため 30 秒で切り上げます。切り上げてもダウンロードはブラウザ側で続き、指定した場所に保存されるので、参照の差し替えはそのまま残し、結果に「継続中」として件数を出します。
+
 ### 画像は service worker 側で取得する
 
 content script から画像を `fetch` すると、note のドメインをまたぐため CORS で失敗します。service worker からの `fetch` は `host_permissions` に基づいて実行されるので、`assets.st-note.com` の画像を取得できます。
@@ -78,7 +94,7 @@ content script から画像を `fetch` すると、note のドメインをまた
 | `heading` | `level`, `inline` | `level` は元の `h1`〜`h6` の数字 |
 | `paragraph` | `inline` | |
 | `image` | `src`, `alt`, `caption`, `path?` | `path` は保存成功時にローカルの相対パスが入る |
-| `embed` | `url`, `label` | 埋め込みはリンクに落とす |
+| `embed` | `url`, `label`, `isFile?`, `path?` | 埋め込みはリンクに落とす。`isFile` は添付ファイルの印、`path` は保存成功時のローカル相対パス |
 | `code` | `lang`, `text` | |
 | `quote` | `blocks` | 入れ子 |
 | `list` | `ordered`, `items` | `items` はブロック配列の配列 |
@@ -93,7 +109,7 @@ content script から画像を `fetch` すると、note のドメインをまた
 | `break` | なし |
 | `strong` / `emphasis` / `strike` | `children` |
 | `inlineCode` | `text` |
-| `link` | `href`, `children` |
+| `link` | `href`, `children`, `isFile?`, `path?` |
 
 ## 出力の詳細
 

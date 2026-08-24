@@ -62,6 +62,18 @@ function formatResult(result) {
     lines.push(`取得できなかった画像: ${result.failedImages.length} 件`);
   }
 
+  if (result.savedFiles > 0) {
+    lines.push(`添付ファイル: ${result.savedFiles} 件`);
+  }
+
+  if (result.pendingFiles > 0) {
+    lines.push(`ダウンロード継続中の添付ファイル: ${result.pendingFiles} 件`);
+  }
+
+  if (result.failedFiles.length > 0) {
+    lines.push(`取得できなかった添付ファイル: ${result.failedFiles.length} 件`);
+  }
+
   return lines.join('\n');
 }
 
