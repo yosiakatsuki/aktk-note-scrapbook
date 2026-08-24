@@ -18,36 +18,33 @@ issue では「本文を Markdown で保存し、確認用に HTML を用意す�
 
 どちらも `images/` を相対パスで参照するため、フォルダ単位でのポータビリティは保たれます。
 
-### 保存は File System Access API で行う（chrome.downloads は使わない）
+### 保存先はダウンロードフォルダ配下に固定する
 
-保存先はユーザーが選んだフォルダで、そこへ直接書き込みます。
+`<ダウンロード>/note-scrapbook/<記事タイトル>/` に固定し、`chrome.downloads` API に `saveAs: false` を渡して保存先を尋ねずに書き出します。`chrome.downloads` はダウンロードフォルダの外に書き込めないため、保存先は選べません。
 
-当初は `chrome.downloads` API を使っていましたが、`saveAs: false` を指定してもブラウザ本体の設定「ダウンロード前に各ファイルの保存場所を確認する」を上書きできず、保存のたびにダイアログが出ます。本拡張は 1 記事につき「画像 N 枚 + HTML + Markdown」を個別に書き出すため、1 回の保存で N+2 回ダイアログが出ることになり、実用になりませんでした。
+### File System Access API は使えない
 
-File System Access API なら、フォルダハンドルさえ得ていればブラウザの設定に関係なくダイアログなしで書き込めます。保存先をダウンロードフォルダの外に置けるという利点もあります。この方式には `downloads` 権限が要らないので、マニフェストからも外しています。
+保存先を自由に選び、ブラウザの設定に関係なくダイアログを出さない方式として File System Access API を検討し、一度実装しましたが**動きませんでした**。`showDirectoryPicker()` は Web ページ（`https://`）にしか公開されておらず、拡張のページ（`chrome-extension://`）では `undefined` になります。設定ページから呼ぶと `showDirectoryPicker is not defined` で失敗します。
 
-### フォルダ選択は設定ページで行う
+content script なら Web ページのコンテキストで呼べますが、得られた `FileSystemDirectoryHandle` を拡張側へ渡す手段がありません（`chrome.runtime.sendMessage` は構造化複製ではなく JSON 相当のシリアライズのため）。
 
-`showDirectoryPicker()` はユーザー操作の中からしか呼べません。ポップアップから呼ぶと、フォルダ選択ダイアログにフォーカスが移った時点でポップアップが閉じ、処理が中断します。そのため選択は設定ページ（`open_in_tab: true` の通常のタブ）で行います。
+したがって、拡張からディスクに書く方法は `chrome.downloads` だけです。再検討しないでください。
 
-選んだ `FileSystemDirectoryHandle` は IndexedDB に保存します。ハンドルは構造化複製できるオブジェクトで、`chrome.storage` には入れられないためです。
+### 保存ダイアログはブラウザ設定に依存する
 
-### 権限の確認はポップアップ、書き込みは service worker
+`saveAs: false` を指定しても、ブラウザ本体の設定「ダウンロード前に各ファイルの保存場所を確認する」（`chrome://settings/downloads`）のほうが優先されます。この設定がオンだと、1 記事の保存で「画像 N 枚 + HTML + Markdown」の N+2 回ダイアログが出ます。
 
-`requestPermission()` はユーザー操作を必要とするため service worker からは呼べません。一方、保存処理そのものをポップアップで行うと、途中でポップアップが閉じたときに中断してしまいます。
-
-そこで役割を分けています。
-
-- ポップアップ … `queryPermission()` で状態を確かめ、必要なら `requestPermission()` を出す
-- service worker … 権限がある前提で、抽出・画像取得・書き込みを行う
+拡張側では抑止できないため、README で設定をオフにするよう案内しています。
 
 ### 同名フォルダは上書きする
 
-同じ記事を保存し直したときは、同じフォルダの `index.html` と `article.md` を置き換えます。`getDirectoryHandle(name, { create: true })` は既存のフォルダをそのまま返し、`createWritable()` は既存ファイルを切り詰めるため、追加の処理は要りません。
-
-前回保存した画像は消さずに残します。フォルダの中身を消す操作は影響が大きく、`index.html` と `article.md` は毎回作り直されるので、参照されない画像が残っても実害がないためです。
+`conflictAction: 'overwrite'` を指定しています。指定しない場合、同じ記事を保存し直すと `index (1).html` のようなファイルが同じフォルダに増えていきます。フォルダ単位では分かれないため、かえって扱いにくくなります。
 
 同名タイトルの別記事を保存すると上書きされますが、自分用ツールとして許容します。
+
+### data: URL でダウンロードする
+
+MV3 の service worker では `URL.createObjectURL()` が使えません。取得した画像と生成したテキストは data: URL に変換して `chrome.downloads.download` に渡します。
 
 ### 画像は service worker 側で取得する
 

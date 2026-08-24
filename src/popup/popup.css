@@ -29,10 +29,6 @@ button {
   cursor: pointer;
 }
 
-button + button {
-  margin-top: 0.5rem;
-}
-
 button:disabled {
   cursor: default;
   opacity: 0.5;
@@ -46,13 +42,4 @@ button:disabled {
 
 .status.error {
   color: #c0392b;
-}
-
-.footer {
-  margin: 1rem 0 0;
-  padding-top: 0.75rem;
-  border-top: 1px solid rgba(127, 127, 127, 0.3);
-  font-size: 12px;
-  opacity: 0.8;
-  overflow-wrap: anywhere;
 }
