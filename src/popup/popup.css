@@ -1,0 +1,45 @@
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  width: 20rem;
+  margin: 0;
+  padding: 1rem;
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+h1 {
+  margin: 0 0 0.5rem;
+  font-size: 14px;
+}
+
+.target {
+  margin: 0 0 0.75rem;
+  opacity: 0.75;
+  overflow-wrap: anywhere;
+}
+
+button {
+  width: 100%;
+  padding: 0.6rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.status {
+  margin: 0.75rem 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.status.error {
+  color: #c0392b;
+}
