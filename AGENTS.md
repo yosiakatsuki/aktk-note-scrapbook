@@ -27,11 +27,13 @@ src/
 │   └── extract-article.js DOM → 中間表現の抽出。note の DOM 依存はここに閉じる
 ├── lib/
 │   ├── blocks.js          中間表現の走査ヘルパー
-│   ├── data-url.js        chrome.downloads に渡す data: URL の生成
+│   ├── file-system.js     File System Access API 越しの読み書き
 │   ├── filename.js        フォルダ名・ファイル名のサニタイズ
 │   ├── html.js            中間表現 → 確認用 HTML
-│   └── markdown.js        中間表現 → Markdown
-└── popup/                 ポップアップ UI
+│   ├── markdown.js        中間表現 → Markdown
+│   └── storage.js         保存先フォルダのハンドルを IndexedDB に永続化
+├── options/               設定ページ。保存先フォルダの選択
+└── popup/                 ポップアップ UI。保存の起点と権限確認
 tests/                     vitest（jsdom 環境）
 ```
 
@@ -41,6 +43,7 @@ tests/                     vitest（jsdom 環境）
 - **`src/lib/` は拡張 API に触れない純粋な関数にする。** そのままユニットテストできる状態を保つ
 - **セレクタは決め打ちにせず、フォールバックの配列で持つ。** note の DOM は予告なく変わる
 - **出力は自己完結させる。** 確認用 HTML から外部のスクリプト・フォント・CSS を参照しない
+- **保存でユーザーにダイアログを出さない。** 保存先フォルダは設定ページで一度選ぶだけにし、以降は File System Access API で直接書き込む（理由は [docs/spec.md](docs/spec.md) 参照）
 
 ## コードスタイル
 
@@ -55,13 +58,15 @@ Linter は入れていません。既存のコードに揃えてください。
 `tests/` に vitest のテストを置いています。jsdom 環境なので `DOMParser` が使えます。
 
 - `src/lib/` の変換ロジックと `extract-article.js` の抽出ロジックはテストで守る
-- `background.js` と `popup/` は Chrome の API に依存するためテスト対象外。手動で確認する
+- `file-system.js` はフォルダハンドルを模したオブジェクトを渡してテストする（`tests/file-system.test.js`）
+- `background.js` / `popup/` / `options/` / `storage.js` は Chrome の API に依存するためテスト対象外。手動で確認する
 
 ### 手動確認の手順
 
 1. `chrome://extensions` で拡張を再読み込みする
-2. note の記事を開いて保存する
-3. 保存されたフォルダの `index.html` を Finder からダブルクリックし、画像が表示されるか確認する
-4. `article.md` をエディタで開き、本文構造が保たれているか確認する
+2. 「拡張機能のオプション」から保存先フォルダを選ぶ
+3. note の記事を開いて保存する。保存ダイアログが出ないことを確認する
+4. 保存されたフォルダの `index.html` を Finder からダブルクリックし、画像が表示されるか確認する
+5. `article.md` をエディタで開き、本文構造が保たれているか確認する
 
 うまくいかないときは、拡張機能ページの「Service Worker」リンクから開く DevTools にログが出ます。
