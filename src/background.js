@@ -8,7 +8,7 @@
 
 import { collectFileNodes, collectImageBlocks } from './lib/blocks.js';
 import { bytesToDataUrl, textToDataUrl } from './lib/data-url.js';
-import { attachmentFileName, imageFileName, sanitizeSegment } from './lib/filename.js';
+import { articleFolderName, attachmentFileName, imageFileName } from './lib/filename.js';
 import { renderHtml } from './lib/html.js';
 import { renderMarkdown } from './lib/markdown.js';
 
@@ -44,7 +44,7 @@ async function saveArticle(tabId) {
 
   article.savedAt = new Date().toISOString();
 
-  const folder = `${ROOT_FOLDER}/${sanitizeSegment(article.title)}`;
+  const folder = `${ROOT_FOLDER}/${articleFolderName(article.title, article.publishedAt)}`;
   const imageResult = await saveImages(article.blocks, folder);
   const fileResult = await saveAttachments(article.blocks, folder);
 

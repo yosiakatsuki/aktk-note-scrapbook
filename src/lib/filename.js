@@ -58,6 +58,49 @@ export function sanitizeSegment(name, options = {}) {
 }
 
 /**
+ * 記事の公開日とタイトルから保存先フォルダ名を作る。
+ *
+ * @param {string} title       記事タイトル。
+ * @param {string} publishedAt 公開日時（ISO 8601 文字列）。
+ * @return {string} `20260829_記事タイトル`形式のフォルダ名。
+ */
+export function articleFolderName(title, publishedAt) {
+  const publishedDate = compactPublishedDate(publishedAt);
+
+  if (!publishedDate) {
+    // 公開日を取得できない記事も保存できるよう、従来のタイトルだけの名前へ戻す。
+    return sanitizeSegment(title);
+  }
+
+  const safeTitle = sanitizeSegment(title, { maxLength: 71 });
+
+  return `${publishedDate}_${safeTitle}`;
+}
+
+function compactPublishedDate(value) {
+  const matched = String(value ?? '').match(/^(\d{4})-(\d{2})-(\d{2})(?:T|$)/);
+
+  if (!matched) {
+    // ISO 8601形式でない値から誤った日付を推測せず、呼び出し側でフォールバックさせる。
+    return '';
+  }
+
+  const [, year, month, day] = matched;
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+
+  if (
+    date.getUTCFullYear() !== Number(year) ||
+    date.getUTCMonth() + 1 !== Number(month) ||
+    date.getUTCDate() !== Number(day)
+  ) {
+    // 存在しない日付はフォルダ名に使わず、記事保存を継続できるようにする。
+    return '';
+  }
+
+  return `${year}${month}${day}`;
+}
+
+/**
  * 画像の保存ファイル名を作る。連番なので並び順が本文と一致する。
  *
  * @param {number} index  1 始まりの通し番号。
