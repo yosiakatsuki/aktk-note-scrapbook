@@ -13,13 +13,6 @@
     "default_popup": "src/popup/popup.html",
     "default_title": "note Scrapbook"
   },
-  "content_scripts": [
-    {
-      "matches": ["https://note.com/*"],
-      "js": ["src/content/attachment-nav.js"],
-      "run_at": "document_idle"
-    }
-  ],
   "web_accessible_resources": [
     {
       "resources": ["src/content/extract-article.js"],

@@ -122,7 +122,48 @@ describe('renderHtml', () => {
     ]);
 
     expect(html).toContain('<a href="files/a.zip">配布データ</a>');
-    expect(html).toContain('<a href="files/b.pdf">資料</a>');
+    expect(html).toContain('href="files/b.pdf">資料</a>');
+  });
+
+  it('添付ファイルがある場合は左上の固定ナビゲーションから各箇所へ移動できる', () => {
+    const html = render([
+      {
+        type: 'embed',
+        url: 'https://note.com/files/a.zip',
+        label: '配布データ',
+        isFile: true,
+        path: 'files/a.zip',
+      },
+      {
+        type: 'paragraph',
+        inline: [
+          {
+            type: 'link',
+            href: 'https://note.com/files/b.pdf',
+            children: [text('資料')],
+            isFile: true,
+            path: 'files/b.pdf',
+          },
+        ],
+      },
+    ]);
+
+    expect(html).toContain('<body class="has-download-navigation">');
+    expect(html).toContain('<nav class="download-navigation" aria-label="添付ファイルへの移動">');
+    expect(html).toContain('<li><a href="#download-1">配布データ</a></li>');
+    expect(html).toContain('<li><a href="#download-2">資料</a></li>');
+    expect(html).toContain('id="download-1" class="embed download-target"');
+    expect(html).toContain('id="download-2" class="download-target" href="files/b.pdf"');
+    expect(html).toContain('position: relative;');
+    expect(html).toMatch(/\.download-navigation \{[\s\S]*position: fixed;[\s\S]*top: 1rem;[\s\S]*left: 1rem;/);
+  });
+
+  it('添付ファイルがなければ固定ナビゲーションを出さない', () => {
+    const html = render([{ type: 'paragraph', inline: [text('本文')] }]);
+
+    expect(html).toContain('<body>');
+    expect(html).not.toContain('class="download-navigation"');
+    expect(html).not.toContain('id="download-1"');
   });
 
   it('取得できなかった添付ファイルは元の URL を残す', () => {

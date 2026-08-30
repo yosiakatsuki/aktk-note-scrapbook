@@ -5,11 +5,14 @@
  * 外部リソース（フォント・スクリプト）は一切参照しない。
  */
 
+import { collectFileNodes } from './blocks.js';
+
 // 保存した記事は原稿と同じ見た目で読みたいので、OS のダークモードには追従せず
 // 背景は白で固定する。色はすべて具体値で指定し、閲覧環境で変わらないようにする。
 const STYLE = `
 :root { color-scheme: light; }
 body {
+  position: relative;
   margin: 0 auto;
   padding: 2rem 1.25rem 6rem;
   max-width: 42rem;
@@ -54,6 +57,47 @@ hr { border: none; border-top: 1px solid #dddddd; margin: 2.5rem 0; }
 table { border-collapse: collapse; width: 100%; display: block; overflow-x: auto; }
 th, td { border: 1px solid #dddddd; padding: 0.4rem 0.6rem; text-align: left; }
 .embed { margin: 1.5rem 0; }
+.download-navigation {
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  z-index: 10;
+  box-sizing: border-box;
+  width: min(15rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  padding: 0.75rem;
+  overflow-y: auto;
+  border: 1px solid #cccccc;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 14%);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.download-navigation__title {
+  margin: 0 0 0.4rem;
+  color: #555555;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.download-navigation ol { margin: 0; padding-left: 1.5rem; }
+.download-navigation li + li { margin-top: 0.3rem; }
+.download-navigation a { display: block; overflow-wrap: anywhere; }
+.download-target { scroll-margin-top: 1rem; }
+@media (max-width: 64rem) {
+  body.has-download-navigation { padding-top: 7rem; }
+  .download-navigation {
+    top: 0.75rem;
+    right: 0.75rem;
+    left: 0.75rem;
+    width: auto;
+    max-height: 5.5rem;
+  }
+  .download-navigation ol { display: flex; gap: 1.75rem; overflow-x: auto; }
+  .download-navigation li { flex: 0 0 auto; }
+  .download-navigation li + li { margin-top: 0; }
+}
 `.trim();
 
 /**
@@ -62,6 +106,9 @@ th, td { border: 1px solid #dddddd; padding: 0.4rem 0.6rem; text-align: left; }
  */
 export function renderHtml(article) {
   const title = article.title || '無題';
+  const blocks = article.blocks ?? [];
+  const downloadTargets = createDownloadTargets(blocks);
+  const bodyClass = downloadTargets.size > 0 ? ' class="has-download-navigation"' : '';
 
   return `<!DOCTYPE html>
 <html lang="ja">
@@ -73,13 +120,14 @@ export function renderHtml(article) {
 ${STYLE}
 </style>
 </head>
-<body>
+<body${bodyClass}>
+${renderDownloadNavigation(downloadTargets)}
 <header>
 <h1>${escapeHtml(title)}</h1>
 ${renderMeta(article)}
 </header>
 <main>
-${renderBlocks(article.blocks ?? [], 0)}
+${renderBlocks(blocks, 0, downloadTargets)}
 </main>
 </body>
 </html>
@@ -128,23 +176,80 @@ function formatDate(value) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-function renderBlocks(blocks, depth) {
+function createDownloadTargets(blocks) {
+  return new Map(
+    collectFileNodes(blocks).map((node, index) => [
+      node,
+      {
+        id: `download-${index + 1}`,
+        label: downloadLabel(node, index),
+      },
+    ])
+  );
+}
+
+function downloadLabel(node, index) {
+  const label = node.type === 'embed' ? node.label : inlineText(node.children);
+
+  return label?.trim() || `添付ファイル ${index + 1}`;
+}
+
+function inlineText(nodes = []) {
+  return nodes
+    .map((node) => {
+      switch (node.type) {
+        case 'text':
+        case 'inlineCode':
+          return node.text;
+
+        case 'break':
+          return ' ';
+
+        default:
+          return inlineText(node.children);
+      }
+    })
+    .join('');
+}
+
+function renderDownloadNavigation(downloadTargets) {
+  if (downloadTargets.size === 0) {
+    // 添付ファイルのない記事では、本文閲覧に不要なナビゲーションを表示しない。
+    return '';
+  }
+
+  const items = [...downloadTargets.values()]
+    .map(
+      ({ id, label }) =>
+        `<li><a href="#${escapeAttribute(id)}">${escapeHtml(label)}</a></li>`
+    )
+    .join('\n');
+
+  return `<nav class="download-navigation" aria-label="添付ファイルへの移動">
+<p class="download-navigation__title">ダウンロード</p>
+<ol>
+${items}
+</ol>
+</nav>`;
+}
+
+function renderBlocks(blocks, depth, downloadTargets) {
   return blocks
-    .map((block) => renderBlock(block, depth))
+    .map((block) => renderBlock(block, depth, downloadTargets))
     .filter(Boolean)
     .join('\n');
 }
 
-function renderBlock(block, depth) {
+function renderBlock(block, depth, downloadTargets) {
   switch (block.type) {
     case 'heading': {
       // 記事タイトルが h1 なので、本文の見出しは 1 段下げる。
       const level = Math.min(block.level + 1, 6);
-      return `<h${level}>${renderInline(block.inline)}</h${level}>`;
+      return `<h${level}>${renderInline(block.inline, downloadTargets)}</h${level}>`;
     }
 
     case 'paragraph':
-      return `<p>${renderInline(block.inline)}</p>`;
+      return `<p>${renderInline(block.inline, downloadTargets)}</p>`;
 
     case 'divider':
       return '<hr>';
@@ -159,26 +264,35 @@ function renderBlock(block, depth) {
       return `<figure>\n${img}${caption}\n</figure>`;
     }
 
-    case 'embed':
-      return `<p class="embed"><a href="${escapeAttribute(block.path || block.url)}">${escapeHtml(block.label || block.url)}</a></p>`;
+    case 'embed': {
+      const target = downloadTargets.get(block);
+      const targetAttributes = target
+        ? ` id="${escapeAttribute(target.id)}" class="embed download-target"`
+        : ' class="embed"';
+
+      return `<p${targetAttributes}><a href="${escapeAttribute(block.path || block.url)}">${escapeHtml(block.label || block.url)}</a></p>`;
+    }
 
     case 'code':
       return `<pre><code>${escapeHtml(stripTrailingNewline(block.text))}</code></pre>`;
 
     case 'quote':
-      return `<blockquote>\n${renderBlocks(block.blocks ?? [], depth + 1)}\n</blockquote>`;
+      return `<blockquote>\n${renderBlocks(block.blocks ?? [], depth + 1, downloadTargets)}\n</blockquote>`;
 
     case 'list': {
       const tag = block.ordered ? 'ol' : 'ul';
       const items = (block.items ?? [])
-        .map((itemBlocks) => `<li>${renderListItem(itemBlocks, depth + 1)}</li>`)
+        .map(
+          (itemBlocks) =>
+            `<li>${renderListItem(itemBlocks, depth + 1, downloadTargets)}</li>`
+        )
         .join('\n');
 
       return `<${tag}>\n${items}\n</${tag}>`;
     }
 
     case 'table':
-      return renderTable(block);
+      return renderTable(block, downloadTargets);
 
     default:
       return '';
@@ -188,25 +302,28 @@ function renderBlock(block, depth) {
 /**
  * リスト項目は、単一段落なら <p> を省いて素直な見た目にする。
  */
-function renderListItem(blocks, depth) {
+function renderListItem(blocks, depth, downloadTargets) {
   if (blocks.length === 1 && blocks[0].type === 'paragraph') {
-    return renderInline(blocks[0].inline);
+    // 単一段落のリスト項目は余分な段落余白を作らず、元記事の密度を保つ。
+    return renderInline(blocks[0].inline, downloadTargets);
   }
 
-  return renderBlocks(blocks, depth);
+  return renderBlocks(blocks, depth, downloadTargets);
 }
 
-function renderTable(block) {
+function renderTable(block, downloadTargets) {
   const rows = block.rows ?? [];
 
   if (rows.length === 0) {
+    // 空の表は意味のない枠だけが残るため、HTMLには出力しない。
     return '';
   }
 
   const toRow = (cells, cellTag) =>
-    `<tr>${cells.map((inline) => `<${cellTag}>${renderInline(inline)}</${cellTag}>`).join('')}</tr>`;
+    `<tr>${cells.map((inline) => `<${cellTag}>${renderInline(inline, downloadTargets)}</${cellTag}>`).join('')}</tr>`;
 
   if (!block.hasHeader) {
+    // 見出しのない表では、先頭行も本文セルとして扱う。
     return `<table>\n${rows.map((cells) => toRow(cells, 'td')).join('\n')}\n</table>`;
   }
 
@@ -220,11 +337,11 @@ function renderTable(block) {
   ].join('\n');
 }
 
-function renderInline(nodes = []) {
-  return nodes.map((node) => renderInlineNode(node)).join('');
+function renderInline(nodes = [], downloadTargets) {
+  return nodes.map((node) => renderInlineNode(node, downloadTargets)).join('');
 }
 
-function renderInlineNode(node) {
+function renderInlineNode(node, downloadTargets) {
   switch (node.type) {
     case 'text':
       return escapeHtml(node.text);
@@ -233,19 +350,25 @@ function renderInlineNode(node) {
       return '<br>';
 
     case 'strong':
-      return `<strong>${renderInline(node.children)}</strong>`;
+      return `<strong>${renderInline(node.children, downloadTargets)}</strong>`;
 
     case 'emphasis':
-      return `<em>${renderInline(node.children)}</em>`;
+      return `<em>${renderInline(node.children, downloadTargets)}</em>`;
 
     case 'strike':
-      return `<s>${renderInline(node.children)}</s>`;
+      return `<s>${renderInline(node.children, downloadTargets)}</s>`;
 
     case 'inlineCode':
       return `<code>${escapeHtml(node.text)}</code>`;
 
-    case 'link':
-      return `<a href="${escapeAttribute(node.path || node.href)}">${renderInline(node.children)}</a>`;
+    case 'link': {
+      const target = downloadTargets.get(node);
+      const targetAttributes = target
+        ? ` id="${escapeAttribute(target.id)}" class="download-target"`
+        : '';
+
+      return `<a${targetAttributes} href="${escapeAttribute(node.path || node.href)}">${renderInline(node.children, downloadTargets)}</a>`;
+    }
 
     default:
       return '';

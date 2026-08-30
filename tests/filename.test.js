@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { attachmentFileName, imageFileName, sanitizeSegment } from '../src/lib/filename.js';
+import {
+  articleFolderName,
+  attachmentFileName,
+  imageFileName,
+  sanitizeSegment,
+} from '../src/lib/filename.js';
 
 describe('sanitizeSegment', () => {
   it('日本語とスペースはそのまま残す', () => {
@@ -32,6 +37,28 @@ describe('sanitizeSegment', () => {
 
   it('Windows の予約名は代替名にする', () => {
     expect(sanitizeSegment('CON')).toBe('note-article');
+  });
+});
+
+describe('articleFolderName', () => {
+  it('公開日を年月日にして記事タイトルの先頭へ付ける', () => {
+    expect(articleFolderName('記事タイトル', '2026-08-29T10:30:00+09:00')).toBe(
+      '20260829_記事タイトル'
+    );
+  });
+
+  it('公開日がない場合は従来どおり記事タイトルだけを使う', () => {
+    expect(articleFolderName('記事タイトル', '')).toBe('記事タイトル');
+  });
+
+  it('存在しない公開日は記事タイトルだけへフォールバックする', () => {
+    expect(articleFolderName('記事タイトル', '2026-02-30T10:30:00+09:00')).toBe(
+      '記事タイトル'
+    );
+  });
+
+  it('日付を含めてもフォルダ名全体を80文字以内に収める', () => {
+    expect(articleFolderName('あ'.repeat(100), '2026-08-29')).toHaveLength(80);
   });
 });
 

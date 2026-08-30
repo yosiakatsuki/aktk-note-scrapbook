@@ -23,7 +23,6 @@ manifest.json              MV3 マニフェスト
 src/
 ├── background.js          service worker。保存処理の司令塔
 ├── content/
-│   ├── attachment-nav.js  添付ファイルへのページ内ナビ。自動で読み込まれる content script
 │   ├── bootstrap.js       executeScript の注入先。extract-article.js を動的 import する
 │   └── extract-article.js DOM → 中間表現の抽出。note の DOM 依存はここに閉じる
 ├── lib/
@@ -57,7 +56,7 @@ Linter は入れていません。既存のコードに揃えてください。
 `tests/` に vitest のテストを置いています。jsdom 環境なので `DOMParser` が使えます。
 
 - `src/lib/` の変換ロジックと `extract-article.js` の抽出ロジックはテストで守る
-- `background.js` / `popup/` / `content/attachment-nav.js` は Chrome の API や実ページの DOM に依存するためテスト対象外。手動で確認する
+- `background.js` と `popup/` は Chrome の API に依存するためテスト対象外。手動で確認する
 
 ### 手動確認の手順
 
@@ -66,6 +65,5 @@ Linter は入れていません。既存のコードに揃えてください。
 3. 保存されたフォルダの `index.html` を Finder からダブルクリックし、画像が表示されるか確認する
 4. `article.md` をエディタで開き、本文構造が保たれているか確認する
 5. 添付ファイルのある記事なら、`files/` に保存され `index.html` のリンクから開けるか確認する
-6. 添付ファイルのある記事で、右下のナビからダウンロードボタンへジャンプできるか確認する
 
 うまくいかないときは、拡張機能ページの「Service Worker」リンクから開く DevTools にログが出ます。

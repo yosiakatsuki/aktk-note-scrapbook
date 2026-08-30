@@ -94,9 +94,12 @@ const DOWNLOADABLE_EXTENSIONS = new Set([
 // note の添付ファイル埋め込みを表す embedded-service の値。
 const FILE_EMBED_SERVICES = /file|attachment|download/i;
 
-// 拡張子が付かない配信 URL。note の添付ファイルはこの形で配られる。
-// 例: https://note.com/api/v2/attachments/download/ab9173ab87c0158df9bfc939f876c9fb
-const ATTACHMENT_URL_PATTERNS = [/^https:\/\/note\.com\/api\/v\d+\/attachments\//i];
+// 保存前のnoteページへ挿入するナビゲーションを識別する名前。
+const PAGE_NAVIGATION_ID = 'note-scrapbook-download-navigation';
+const PAGE_NAVIGATION_STYLE_ID = 'note-scrapbook-download-navigation-style';
+const DOWNLOAD_TARGET_PREFIX = 'note-scrapbook-download-';
+const ORIGINAL_ID_ATTRIBUTE = 'data-note-scrapbook-original-id';
+const ORIGINAL_BODY_POSITION_ATTRIBUTE = 'data-note-scrapbook-original-body-position';
 
 const ELEMENT_NODE = 1;
 const TEXT_NODE = 3;
@@ -128,6 +131,213 @@ export function extractArticle(doc = globalThis.document) {
     url: canonicalUrl(doc, linkedData),
     blocks,
   };
+}
+
+/**
+ * 保存前のnoteページを解析し、添付ファイルへの移動ナビゲーションを挿入する。
+ *
+ * @param {Document} doc 対象ドキュメント。省略時は現在のページ。
+ * @return {{ imageCount: number, fileCount: number }} 事前解析結果。
+ */
+export function prepareArticlePage(doc = globalThis.document) {
+  removePageDownloadNavigation(doc);
+
+  const article = extractArticle(doc);
+  const root = findBodyRoot(doc);
+  const downloadTargets = findPageDownloadTargets(root, doc);
+
+  insertPageDownloadNavigation(doc, downloadTargets);
+
+  return {
+    imageCount: countImageBlocks(article.blocks),
+    fileCount: downloadTargets.length,
+  };
+}
+
+function countImageBlocks(blocks = []) {
+  return blocks.reduce(
+    (count, block) =>
+      count +
+      (block.type === 'image' ? 1 : 0) +
+      countImageBlocks(block.blocks ?? []) +
+      (block.items ?? []).reduce(
+        (itemCount, itemBlocks) => itemCount + countImageBlocks(itemBlocks),
+        0
+      ),
+    0
+  );
+}
+
+function findPageDownloadTargets(root, doc) {
+  const targets = [];
+  const handledAnchors = new Set();
+
+  for (const element of root.querySelectorAll('figure, a[href]')) {
+    const tag = element.tagName.toLowerCase();
+
+    if (tag === 'figure') {
+      // 添付埋め込みはfigure全体の属性も判定材料になるため、リンクより先に確認する。
+      const anchor = element.querySelector('a[href]');
+      const href = resolveUrl(
+        anchor?.getAttribute('href') ?? element.querySelector('iframe')?.getAttribute('src'),
+        { doc }
+      );
+      const isFile =
+        FILE_EMBED_SERVICES.test(element.getAttribute('embedded-service') ?? '') ||
+        anchor?.hasAttribute('download') === true ||
+        isDownloadableUrl(href);
+
+      if (!isFile) {
+        // 通常の画像や外部サービス埋め込みは、ダウンロード移動先に含めない。
+        continue;
+      }
+
+      if (anchor) {
+        // 同じリンクを後続のa要素の走査で重複登録しないよう記録する。
+        handledAnchors.add(anchor);
+      }
+
+      targets.push({
+        element: anchor ?? element,
+        label:
+          anchor?.textContent?.trim() ||
+          element.querySelector('figcaption')?.textContent?.trim() ||
+          `添付ファイル ${targets.length + 1}`,
+      });
+      continue;
+    }
+
+    if (handledAnchors.has(element)) {
+      // 添付figureとして登録済みのリンクは、一覧へ二重に表示しない。
+      continue;
+    }
+
+    const href = resolveUrl(element.getAttribute('href'), { doc });
+
+    if (!element.hasAttribute('download') && !isDownloadableUrl(href)) {
+      // 通常の本文リンクは、ダウンロード移動先に含めない。
+      continue;
+    }
+
+    targets.push({
+      element,
+      label: element.textContent?.trim() || `添付ファイル ${targets.length + 1}`,
+    });
+  }
+
+  return targets;
+}
+
+function insertPageDownloadNavigation(doc, targets) {
+  if (targets.length === 0) {
+    // 添付ファイルがないページでは、本文閲覧に不要なナビゲーションを追加しない。
+    return;
+  }
+
+  if (!doc.body || !doc.head) {
+    // 通常のHTML文書として準備できていないページは、安全に書き換えられないため中断する。
+    return;
+  }
+
+  doc.body.setAttribute(ORIGINAL_BODY_POSITION_ATTRIBUTE, doc.body.style.position);
+  doc.body.style.position = 'relative';
+
+  const style = doc.createElement('style');
+  style.id = PAGE_NAVIGATION_STYLE_ID;
+  style.textContent = `
+#${PAGE_NAVIGATION_ID}.download-navigation {
+  all: initial;
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  z-index: 2147483647;
+  box-sizing: border-box;
+  display: block;
+  width: min(15rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  padding: 0.75rem;
+  overflow-y: auto;
+  border: 1px solid #cccccc;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 14%);
+  color: #222222;
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+}
+#${PAGE_NAVIGATION_ID} .download-navigation__title {
+  margin: 0 0 0.4rem;
+  color: #555555;
+  font: 700 12px/1.5 -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif;
+  letter-spacing: 0.08em;
+}
+#${PAGE_NAVIGATION_ID} ol { margin: 0; padding-left: 1.5rem; }
+#${PAGE_NAVIGATION_ID} li { margin: 0; padding: 0; }
+#${PAGE_NAVIGATION_ID} li + li { margin-top: 0.3rem; }
+#${PAGE_NAVIGATION_ID} a {
+  display: block;
+  color: #1a6dcc;
+  font: inherit;
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+}
+[${ORIGINAL_ID_ATTRIBUTE}] { scroll-margin-top: 1rem; }
+`.trim();
+  doc.head.append(style);
+
+  const navigation = doc.createElement('nav');
+  navigation.id = PAGE_NAVIGATION_ID;
+  navigation.className = 'download-navigation';
+  navigation.setAttribute('aria-label', '添付ファイルへの移動');
+
+  const title = doc.createElement('p');
+  title.className = 'download-navigation__title';
+  title.textContent = 'ダウンロード';
+  navigation.append(title);
+
+  const list = doc.createElement('ol');
+
+  for (const [index, target] of targets.entries()) {
+    const targetId = `${DOWNLOAD_TARGET_PREFIX}${index + 1}`;
+    target.element.setAttribute(ORIGINAL_ID_ATTRIBUTE, target.element.getAttribute('id') ?? '');
+    target.element.id = targetId;
+
+    const item = doc.createElement('li');
+    const link = doc.createElement('a');
+    link.href = `#${targetId}`;
+    link.textContent = target.label;
+    item.append(link);
+    list.append(item);
+  }
+
+  navigation.append(list);
+  doc.body.prepend(navigation);
+}
+
+function removePageDownloadNavigation(doc) {
+  doc.getElementById(PAGE_NAVIGATION_ID)?.remove();
+  doc.getElementById(PAGE_NAVIGATION_STYLE_ID)?.remove();
+
+  for (const target of doc.querySelectorAll(`[${ORIGINAL_ID_ATTRIBUTE}]`)) {
+    const originalId = target.getAttribute(ORIGINAL_ID_ATTRIBUTE);
+
+    if (originalId) {
+      // 元からIDがあった要素は、再解析前にサイト本来の値へ戻す。
+      target.id = originalId;
+    } else {
+      // 拡張機能が新しく付けたIDだけを取り除き、ページ側へ痕跡を残さない。
+      target.removeAttribute('id');
+    }
+
+    target.removeAttribute(ORIGINAL_ID_ATTRIBUTE);
+  }
+
+  if (doc.body?.hasAttribute(ORIGINAL_BODY_POSITION_ATTRIBUTE)) {
+    // 再解析時にbodyの指定を積み重ねないよう、挿入前のインラインスタイルへ戻す。
+    doc.body.style.position = doc.body.getAttribute(ORIGINAL_BODY_POSITION_ATTRIBUTE) ?? '';
+    doc.body.removeAttribute(ORIGINAL_BODY_POSITION_ATTRIBUTE);
+  }
 }
 
 /**
@@ -491,14 +701,9 @@ function embedBlock(href, label, ctx, isFile = false) {
 }
 
 /**
- * リンク先がローカルに保存したい添付ファイルかどうかを判定する。
- * 既知の配信 URL か、拡張子が既知のものを対象にする。
+ * リンク先がローカルに保存したい添付ファイルかどうかを、URL の拡張子で判定する。
  */
 function isDownloadableUrl(url) {
-  if (ATTACHMENT_URL_PATTERNS.some((pattern) => pattern.test(url))) {
-    return true;
-  }
-
   let pathname = url;
 
   try {

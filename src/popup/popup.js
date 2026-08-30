@@ -10,8 +10,26 @@ const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true 
 
 if (isNoteArticle(activeTab?.url)) {
   targetLabel.textContent = activeTab.title ?? activeTab.url;
-  saveButton.disabled = false;
+  setStatus('画像と添付ファイルを確認中…');
+
+  try {
+    const result = await chrome.runtime.sendMessage({
+      type: 'prepare-article-page',
+      tabId: activeTab.id,
+    });
+
+    if (!result?.ok) {
+      // 事前解析に失敗したページをそのまま保存すると不完全になるため、保存を開始させない。
+      throw new Error(result?.error ?? '記事を事前確認できませんでした。');
+    }
+
+    setStatus(formatInspection(result));
+    saveButton.disabled = false;
+  } catch (error) {
+    setStatus(error?.message ?? String(error), true);
+  }
 } else {
+  // noteの記事以外ではDOM解析やページ書き換えを実行しない。
   targetLabel.textContent = 'note の記事ページを開いてから実行してください。';
 }
 
@@ -72,6 +90,17 @@ function formatResult(result) {
 
   if (result.failedFiles.length > 0) {
     lines.push(`取得できなかった添付ファイル: ${result.failedFiles.length} 件`);
+  }
+
+  return lines.join('\n');
+}
+
+function formatInspection(result) {
+  const lines = [`画像: ${result.imageCount} 件`, `添付ファイル: ${result.fileCount} 件`];
+
+  if (result.fileCount > 0) {
+    // ページ側にも変化があることを明示し、固定ナビゲーションを見つけやすくする。
+    lines.push('ページ左上に移動リンクを表示しました。');
   }
 
   return lines.join('\n');
