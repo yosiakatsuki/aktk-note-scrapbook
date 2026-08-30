@@ -21,11 +21,17 @@ const FILE_FOLDER = 'files';
 const DOWNLOAD_TIMEOUT_MS = 30000;
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message?.type !== 'save-article') {
+  if (message?.type !== 'prepare-article-page' && message?.type !== 'save-article') {
+    // この拡張が扱わないメッセージは、他のリスナーへ処理を委ねる。
     return false;
   }
 
-  saveArticle(message.tabId).then(sendResponse, (error) => {
+  const operation =
+    message.type === 'prepare-article-page'
+      ? prepareArticlePageInTab(message.tabId)
+      : saveArticle(message.tabId);
+
+  operation.then(sendResponse, (error) => {
     sendResponse({ ok: false, error: error?.message ?? String(error) });
   });
 
@@ -198,6 +204,31 @@ async function extractFromTab(tabId) {
   }
 
   return result.article;
+}
+
+/**
+ * content scriptを注入し、保存前のページへ添付ファイルナビゲーションを追加する。
+ */
+async function prepareArticlePageInTab(tabId) {
+  let injection;
+
+  try {
+    [injection] = await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ['src/content/prepare-page-bootstrap.js'],
+    });
+  } catch (error) {
+    throw new Error(`ページにアクセスできませんでした: ${error?.message ?? error}`);
+  }
+
+  const result = injection?.result;
+
+  if (!result?.ok) {
+    // 解析に失敗した状態で保存ボタンを有効にせず、原因をポップアップへ返す。
+    throw new Error(result?.error ?? '記事を事前確認できませんでした。');
+  }
+
+  return result;
 }
 
 /**

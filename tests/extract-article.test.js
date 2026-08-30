@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { extractArticle, extractBlocks } from '../src/content/extract-article.js';
+import {
+  extractArticle,
+  extractBlocks,
+  prepareArticlePage,
+} from '../src/content/extract-article.js';
 
 /**
  * note の記事ページを模したドキュメントを作る。
@@ -238,5 +242,60 @@ describe('添付ファイルの検出', () => {
     const [block] = blocksOf('<p><a href="https://note.com/files/A.ZIP">DL</a></p>');
 
     expect(block.inline[0].isFile).toBe(true);
+  });
+});
+
+describe('保存前のページ準備', () => {
+  it('画像と添付ファイルを数え、左上ナビゲーションを挿入する', () => {
+    const doc = makeDocument(`
+      <figure><img src="https://assets.st-note.com/img/a.png" alt="画像"></figure>
+      <p><a href="https://note.com/files/a.zip">配布データ</a></p>
+    `);
+
+    expect(prepareArticlePage(doc)).toEqual({ imageCount: 1, fileCount: 1 });
+    expect(doc.body.style.position).toBe('relative');
+    expect(doc.querySelectorAll('.download-navigation')).toHaveLength(1);
+    expect(doc.querySelector('.download-navigation a')?.getAttribute('href')).toBe(
+      '#note-scrapbook-download-1'
+    );
+    expect(doc.getElementById('note-scrapbook-download-1')?.textContent).toBe('配布データ');
+  });
+
+  it('再解析してもナビゲーションと移動先IDを重複させない', () => {
+    const doc = makeDocument(
+      '<p><a id="original-file" href="https://note.com/files/a.zip">配布データ</a></p>'
+    );
+
+    prepareArticlePage(doc);
+    prepareArticlePage(doc);
+
+    expect(doc.querySelectorAll('.download-navigation')).toHaveLength(1);
+    expect(doc.querySelectorAll('#note-scrapbook-download-1')).toHaveLength(1);
+    expect(
+      doc.getElementById('note-scrapbook-download-1')?.getAttribute(
+        'data-note-scrapbook-original-id'
+      )
+    ).toBe('original-file');
+  });
+
+  it('拡張子のない添付埋め込みもナビゲーションへ追加する', () => {
+    const doc = makeDocument(`
+      <figure embedded-service="file">
+        <a href="https://note.com/api/v1/attachments/123/download">限定資料</a>
+      </figure>
+    `);
+
+    expect(prepareArticlePage(doc)).toEqual({ imageCount: 0, fileCount: 1 });
+    expect(doc.querySelector('.download-navigation a')?.textContent).toBe('限定資料');
+    expect(doc.getElementById('note-scrapbook-download-1')?.getAttribute('href')).toBe(
+      'https://note.com/api/v1/attachments/123/download'
+    );
+  });
+
+  it('添付ファイルがなければナビゲーションを挿入しない', () => {
+    const doc = makeDocument('<p><a href="https://example.com/page">通常リンク</a></p>');
+
+    expect(prepareArticlePage(doc)).toEqual({ imageCount: 0, fileCount: 0 });
+    expect(doc.querySelector('.download-navigation')).toBeNull();
   });
 });
